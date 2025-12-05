@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "duckagent"
+version = "0.0.1"
+description = "DuckDB-integrated agentic analytics PoC"
+readme = "README.md"
+requires-python = ">=3.8"
+authors = [
+  {name = "hollylessthan"}
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]

@@ -1,0 +1,12 @@
+pyproject.toml
+src/duckagent/__init__.py
+src/duckagent/agent.py
+src/duckagent/orchestrator.py
+src/duckagent/planner.py
+src/duckagent/router.py
+src/duckagent.egg-info/PKG-INFO
+src/duckagent.egg-info/SOURCES.txt
+src/duckagent.egg-info/dependency_links.txt
+src/duckagent.egg-info/top_level.txt
+src/duckagent/adapters/langgraph_adapter.py
+tests/test_router.py
