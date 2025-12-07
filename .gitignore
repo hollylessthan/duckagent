@@ -8,3 +8,4 @@ build/
 .venv
 /.vscode
 .venv_lg/
+src/duckagent.egg-info/
