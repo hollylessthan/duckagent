@@ -10,4 +10,5 @@
 - Add example `examples/run_with_dataframe.py` demonstrating `Agent.run(..., data=...)`.
  - Add `use_langgraph` opt-in flag to `Agent` to run decision graphs via LangGraph when available; falls back to local orchestrator.
  - Add unit tests for `use_langgraph` behavior and update README example.
+ - feat(langgraph): add `langgraph` SDK support, `langgraph_mapping` (decision→run payload), adapter fallbacks, and mapping unit tests.
 
