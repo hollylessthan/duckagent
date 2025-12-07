@@ -1,10 +1,11 @@
-# Changelog
+# CHANGELOG
 
-## Unreleased (2025-12-05)
+## Unreleased
 
-- Add `data` parameter to `Agent.run(...)` to accept a Pandas DataFrame and inject it into runtime context as `full_df`.
-- Planner now prefers a Summarizer-only plan when `context` contains `full_df` or a `rows_preview`.
-- Summarizer updated to prefer summarizing a provided DataFrame, use LLM when available, and return a helpful fallback message when no data is present.
-- Added unit tests: `test_agent_run_with_data_param`, `test_planner_detects_context_df`, `test_summarizer_no_data_message`.
-- All tests passing locally (`8 passed`).
+- Add `data` parameter to `Agent.run(...)` allowing callers to pass a Pandas DataFrame directly.
+- `Agent` accepts optional `table_name` to control DuckDB registration name for provided DataFrames (default `full_df`).
+- `Planner.plan_for_intent` prefers a Summarizer-only plan when `context` contains `full_df` or `rows_preview`.
+- `Summarizer` now prefers summarizing a provided DataFrame, uses LLM when available, and returns a helpful message when no data present.
+- Add unit tests covering data handling (`tests/test_data_handling.py`).
+- Add example `examples/run_with_dataframe.py` demonstrating `Agent.run(..., data=...)`.
 
