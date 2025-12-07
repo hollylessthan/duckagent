@@ -17,15 +17,29 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# Try to import LangGraph runtime. If not present, we run locally.
+# Try to import LangGraph runtime or SDK. If not present, we run locally.
+HAS_LANGGRAPH = False
+langgraph = None
+langgraph_sdk = None
 try:
     import langgraph  # type: ignore
+    langgraph = langgraph
     HAS_LANGGRAPH = True
 except Exception:
-    HAS_LANGGRAPH = False
+    langgraph = None
+
+try:
+    import langgraph_sdk  # type: ignore
+    langgraph_sdk = langgraph_sdk
+    HAS_LANGGRAPH = True
+except Exception:
+    langgraph_sdk = None
 
 # Local orchestrator fallback
 from duckagent.orchestrator import execute as local_execute
+
+# helper mapping
+from duckagent.adapters.langgraph_mapping import build_run_payload
 
 
 def run_decision_graph(decision: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
@@ -37,41 +51,61 @@ def run_decision_graph(decision: Dict[str, Any], context: Dict[str, Any]) -> Dic
     Returns the execution result dict.
     """
     if HAS_LANGGRAPH:
-        try:
-            # Best-effort mapping of decision -> LangGraph flow
-            # We avoid depending on specific LangGraph APIs here; try a common pattern.
-            lg = langgraph
-            # Create a graph and nodes dynamically
-            graph = lg.Graph()
-            nodes = {}
-            for idx, node in enumerate(decision.get("agents", [])):
-                name = node.get("name")
-                # wrap a small function that will call our local implementations
-                def make_callable(n):
-                    def fn(state, params=n.get("params", {})):
-                        # state is expected to be the shared context dict
-                        # call local orchestrator per-node handlers via our AGENT_IMPL mapping
-                        # To keep adapter simple, run the node using local orchestrator helpers
-                        # by creating a tiny one-node decision and executing it.
-                        one_decision = {"agents": [n]}
-                        return local_execute(one_decision, state)
+        # Prefer the SDK client path when available
+        if langgraph_sdk is not None:
+            try:
+                run_payload = build_run_payload(decision)
+                client = None
+                # try common sdk helpers
+                if hasattr(langgraph_sdk, "get_client"):
+                    client = langgraph_sdk.get_client()
+                else:
+                    client_mod = getattr(langgraph_sdk, "client", None)
+                    if client_mod and hasattr(client_mod, "LangGraphClient"):
+                        client = client_mod.LangGraphClient()
 
-                    return fn
+                if client is not None:
+                    # try common client run creation paths
+                    if hasattr(client, "runs") and hasattr(client.runs, "create"):
+                        created = client.runs.create(run_payload)
+                        return {"langgraph_result": created}
+                    if hasattr(client, "create_run"):
+                        created = client.create_run(run_payload)
+                        return {"langgraph_result": created}
+                # if SDK client doesn't expose expected API, fall through
+            except Exception:
+                logger.exception("langgraph_sdk execution failed, will try runtime shim")
 
-                node_id = f"node_{idx}_{name}"
-                nodes[node_id] = graph.add_node(name=node_id, fn=make_callable(node))
+        # Fallback: if a runtime `langgraph` exposes a Graph API, try that
+        if langgraph is not None and hasattr(langgraph, "Graph"):
+            try:
+                lg = langgraph
+                graph = lg.Graph()
+                nodes = {}
+                for idx, node in enumerate(decision.get("agents", [])):
+                    name = node.get("name")
 
-            # wire nodes in a linear fashion
-            node_ids = list(nodes.keys())
-            for a, b in zip(node_ids, node_ids[1:]):
-                graph.add_edge(nodes[a], nodes[b])
+                    def make_callable(n):
+                        def fn(state, params=n.get("params", {})):
+                            one_decision = {"agents": [n]}
+                            return local_execute(one_decision, state)
 
-            # execute the graph
-            run_result = graph.run(context)
-            return {"langgraph_result": run_result}
-        except Exception as e:
-            logger.exception("LangGraph execution failed, falling back to local orchestrator: %s", e)
-            return local_execute(decision, context)
+                        return fn
+
+                    node_id = f"node_{idx}_{name}"
+                    nodes[node_id] = graph.add_node(name=node_id, fn=make_callable(node))
+
+                node_ids = list(nodes.keys())
+                for a, b in zip(node_ids, node_ids[1:]):
+                    graph.add_edge(nodes[a], nodes[b])
+
+                run_result = graph.run(context)
+                return {"langgraph_result": run_result}
+            except Exception:
+                logger.exception("LangGraph runtime shim failed, falling back to local orchestrator")
+
+        # final fallback to local orchestrator
+        return local_execute(decision, context)
     else:
         logger.debug("LangGraph not available; using local orchestrator fallback")
         return local_execute(decision, context)

@@ -1,54 +1,77 @@
-# duckagent PoC
+# duckagent
 
-Lightweight PoC for a DuckDB-integrated multi-agent analytics assistant.
+Install
+-------
 
-Quick usage
+Install runtime dependencies and the package (use your project virtualenv):
+
+```bash
+pip install -r requirements.txt
+pip install -e .
+```
+
+Quickstart
 -----------
-
 - `Agent.run(prompt)` runs the router/planner/orchestrator pipeline synchronously and returns a structured result.
 - You can pass a Pandas `DataFrame` directly to `Agent.run(..., data=...)`. When provided the Planner will prefer
   a Summarizer-only plan and the Summarizer will operate on the DataFrame directly.
 - If you pass a DuckDB `conn` to `Agent(conn=...)` and the connection supports `register(...)`, the DataFrame
   will be registered as a SQL table under a configurable `table_name` (default `full_df`). This allows SQL
   generation and ad-hoc queries to reference the provided dataset.
-
+----------
 Example
--------
+-----------
+
+- **Run programmatically:**
+
+```python
+from duckagent.agent import Agent
+
+agent = Agent()
+res = agent.run("Summarize revenue by country")
+print(res)
+```
+
+- **Pass a DataFrame to the agent:**
 
 ```python
 import pandas as pd
-import duckdb
 from duckagent.agent import Agent
 
-# DataFrame
 df = pd.DataFrame({"country": ["US","CA"], "revenue": [100,200]})
-
-# Summarize directly from Python
-agent = Agent(conn=None)
+agent = Agent()
 res = agent.run("Summarize revenue by country", data=df)
-print(res["execution"]["results"].get("Summarizer"))
-
-# Or register DataFrame into DuckDB under a custom table name
-conn = duckdb.connect(':memory:')
-agent_db = Agent(conn=conn, table_name="my_table")
-res_db = agent_db.run("Summarize revenue by country", data=df)
-print(conn.execute("SELECT * FROM my_table").fetchdf())
 ```
 
-Opt-in to LangGraph
--------------------
+- **Notebook (recommended):** load the IPython extension and run `%%duckagent` in a cell.
 
-If you have LangGraph installed and want to run decision graphs via the LangGraph
-adapter, opt in by setting `use_langgraph=True` when creating the `Agent`.
+Example notebook usage:
+
+1. In a notebook cell: `%load_ext duckagent.ipython_magic`
+2. Create a DataFrame named `sales_df`.
+3. Run:
 
 ```python
-from duckagent.agent import Agent
-
-# attempt to run decision graph via LangGraph adapter (falls back if unavailable)
-agent_lg = Agent(use_langgraph=True)
-res = agent_lg.run("Summarize revenue by country", data=df)
-print(res["execution"]) 
+%%duckagent --df=sales_df --as_table=agent_result
+Summarize revenue by country
 ```
+
+If `--as_table` is used and the magic creates a DuckDB connection, the magic will expose the connection as
+`_duckagent_conn` and register the result table for further SQL queries.
+
+More details on architecture, design decisions, and extension ideas are in `docs/architecture.md`.
+
+Contributing & tests
+---------------------
+
+Run the tests with:
+
+```bash
+./scripts/run_tests.sh
+```
+
+For developer setup, see `pyproject.toml` and `requirements.txt`.
+
 
 Further reading
 ---------------

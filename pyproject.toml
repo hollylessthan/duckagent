@@ -14,3 +14,7 @@ authors = [
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[project.optional-dependencies]
+# Optional dependency to enable LangGraph adapter integration
+langgraph = ["langgraph>=1.0,<2.0"]

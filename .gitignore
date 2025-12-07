@@ -7,3 +7,6 @@ build/
 .pytest_cache/
 .venv
 /.vscode
+# Python cache
+__pycache__/
+*.py[cod]
