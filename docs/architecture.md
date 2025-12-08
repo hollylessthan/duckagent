@@ -145,6 +145,23 @@ The router/planner should return a JSON decision object describing which agents 
 }
 ```
 
+Materializer & Tracing
+----------------------
+
+The project includes a LangGraph runtime materializer that converts Planner
+decisions into runtime nodes. Execution prefers an installed SDK/runtime and
+falls back to a local orchestrator when those are not available. Per-node
+traces (inputs, outputs, timings, and status) are collected during execution
+and redacted before any external upload. This makes it easy to visualize and
+debug runs in LangSmith while keeping secrets out of telemetry.
+
+Extension points:
+- `build_runtime_graph(decision, context, agent_impls)`: materializes the
+  decision into nodes/edges and accepts `agent_impls` for pluggable agents.
+- `run_decision_graph(decision, context)`: attempts SDK → runtime → local
+  execution and returns `node_traces` suitable for upload.
+
+
 Agent capability metadata
 - Each agent should expose a small capability descriptor used by the router/planner to choose cheaper alternatives first:
   - `requires_sql` (bool)

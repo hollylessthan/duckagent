@@ -12,3 +12,5 @@
  - Add unit tests for `use_langgraph` behavior and update README example.
  - feat(langgraph): add `langgraph` SDK support, `langgraph_mapping` (decision→run payload), adapter fallbacks, and mapping unit tests.
 
+ - feat(langgraph): implement runtime materializer that converts Planner decisions into runtime nodes, add per-node tracing (redacted) and best-effort LangSmith upload; add materializer unit tests and supervisor demo updates.
+

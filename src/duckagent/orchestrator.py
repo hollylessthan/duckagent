@@ -3,7 +3,7 @@
 This is a synchronous, single-process runner intended for PoC and testing.
 Each agent node is executed by name using small helper implementations below.
 """
-from typing import Dict, Any, List
+from typing import Dict, Any
 import pandas as pd
 
 
@@ -36,7 +36,35 @@ def _run_sqlgenerator(node, state):
             # fallback to simple SQL
             pass
 
-    sql = f"SELECT * FROM sample_table LIMIT {limit}"
+    # Prefer using a registered DataFrame table name if available in state
+    table_name = state.get("full_df_table_name")
+    # If not explicitly provided, try to discover an existing table on the
+    # connection (useful when callers registered a DataFrame manually).
+    if not table_name:
+        conn = state.get("conn")
+        if conn is not None:
+            try:
+                cur = conn.execute("SHOW TABLES")
+                try:
+                    df_tables = cur.fetchdf()
+                    if not df_tables.empty:
+                        # duckdb SHOW TABLES returns a column named 'name' or similar;
+                        # fallback to first column value for the first row.
+                        col = df_tables.columns[0]
+                        table_name = str(df_tables.iloc[0][col])
+                except Exception:
+                    rows = cur.fetchall()
+                    if rows:
+                        # rows may be list of tuples like [("table_name",), ...]
+                        table_name = str(rows[0][0])
+            except Exception:
+                # if SHOW TABLES fails (non-duckdb conn), ignore and fall back
+                table_name = None
+
+    if not table_name:
+        table_name = "sample_table"
+
+    sql = f"SELECT * FROM {table_name} LIMIT {limit}"
     return {"sql": sql}
 
 
@@ -107,8 +135,9 @@ def _run_summarizer(node, state):
                     )
                     try:
                         text = llm.generate(prompt, max_tokens=300)
-                        return {"summary": text}
+                        return {"summary": text, "llm_used": True}
                     except Exception:
+                        # fall back to non-LLM summary if generation fails
                         pass
 
                 # fallback non-LLM summary
@@ -133,20 +162,20 @@ def _run_summarizer(node, state):
         )
         try:
             text = llm.generate(prompt, max_tokens=300)
-            return {"summary": text}
+            return {"summary": text, "llm_used": True}
         except Exception:
             pass
 
     # Helpful fallback message when there's no data to summarize
     if not rows:
         message = (
-            f"No data available to summarize. Provide a DataFrame via `Agent.run(..., data=...)` "
-            "or run a SQL-producing plan so results can be summarized."
+            "No data available to summarize. Provide a DataFrame via ``Agent.run(..., "
+            "data=...)`` or run a SQL-producing plan so results can be summarized."
         )
-        return {"summary": message}
+        return {"summary": message, "llm_used": False}
 
     summary = f"Plan: {plan}\nSQL: {last_sql}\nRows preview count: {len(rows)}"
-    return {"summary": summary}
+    return {"summary": summary, "llm_used": False}
 
 
 AGENT_IMPL = {
@@ -164,7 +193,56 @@ def execute(decision: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]
 
     The context dictionary contains runtime objects like `conn`, `prompt`.
     """
-    state = {"conn": context.get("conn"), "prompt": context.get("prompt")}
+    # Seed runtime state from the provided context so agents can access
+    # objects like the active DuckDB connection, an LLM wrapper, and an
+    # explicit full DataFrame passed via `Agent.run(..., data=...)`.
+    state = {
+        "conn": context.get("conn"),
+        "prompt": context.get("prompt"),
+        "llm": context.get("llm"),
+        "full_df": context.get("full_df"),
+    }
+
+    # Respect explicit preference to use LangGraph: only attempt a LangGraph
+    # runtime run when the caller set `context['prefer_langgraph'] = True`.
+    # This avoids surprising graph execution when callers prefer local runs.
+    prefer_lg = context.get("prefer_langgraph", False)
+    if prefer_lg:
+        try:
+            import langgraph  # type: ignore
+
+            if hasattr(langgraph, "Graph"):
+                try:
+                    lg = langgraph
+                    graph = lg.Graph()
+                    nodes = {}
+                    for idx, node in enumerate(decision.get("agents", [])):
+                        name = node.get("name")
+
+                        def make_callable(n):
+                            def fn(state_inner, params=n.get("params", {})):
+                                one_decision = {"agents": [n]}
+                                return execute(one_decision, state_inner)
+
+                            return fn
+
+                        node_id = f"node_{idx}_{name}"
+                        nodes[node_id] = graph.add_node(name=node_id, fn=make_callable(node))
+
+                    node_ids = list(nodes.keys())
+                    for a, b in zip(node_ids, node_ids[1:]):
+                        graph.add_edge(nodes[a], nodes[b])
+
+                    run_result = graph.run(state)
+                    return {"langgraph_result": run_result}
+                except Exception:
+                    # If LangGraph runtime fails, log and fall back to local execution
+                    import logging
+
+                    logging.getLogger(__name__).exception("LangGraph runtime failed; falling back to local orchestrator")
+        except Exception:
+            # LangGraph not installed or import failed; proceed with local execution
+            pass
     results = {}
     for raw_node in decision.get("agents", []):
         # normalize node: accept either a string name or a dict {name, params}

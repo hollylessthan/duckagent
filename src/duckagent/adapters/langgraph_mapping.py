@@ -52,7 +52,6 @@ def build_run_payload(decision: Dict[str, Any]) -> Dict[str, Any]:
         items[i]["depends_on"] = [items[i - 1]["id"]]
 
     # Build inputs references for each item based on depends_on and upstream outputs
-    id_to_item = {item["id"]: item for item in items}
     for item in items:
       deps = item.get("depends_on") or []
       inputs = []

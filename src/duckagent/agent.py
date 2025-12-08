@@ -10,8 +10,14 @@ from duckagent.adapters import langgraph_adapter
 
 
 class Agent:
-    def __init__(self, conn: Optional[Any] = None, llm: Optional[Any] = None, cache: Optional[Any] = None,
-                 use_langgraph: Union[bool, str] = "auto", table_name: Optional[str] = None):
+    def __init__(
+        self,
+        conn: Optional[Any] = None,
+        llm: Optional[Any] = None,
+        cache: Optional[Any] = None,
+        use_langgraph: Union[bool, str] = True,
+        table_name: Optional[str] = None,
+    ):
         """Agent facade.
 
         use_langgraph: when True, always attempt to run the decision graph via
@@ -27,14 +33,24 @@ class Agent:
         self.router = Router()
         self.planner = Planner(llm=llm)
 
-    def run(self, prompt: str, mode: Optional[str] = None, context: Optional[Dict[str, Any]] = None, data: Optional[Any] = None) -> Dict[str, Any]:
-        """Run a natural-language prompt through the routing/planning/orchestration pipeline.
+    def run(
+        self,
+        prompt: str,
+        mode: Optional[str] = None,
+        context: Optional[Dict[str, Any]] = None,
+        data: Optional[Any] = None,
+    ) -> Dict[str, Any]:
+        """Run a natural-language prompt through the routing/planning/
+        orchestration pipeline.
 
-        Returns a structured result dictionary for quick consumption in notebooks or Streamlit.
+        Returns a structured result dictionary for quick consumption in
+        notebooks or Streamlit.
         """
-        ctx = context or {}
-        # add common runtime objects to context, including llm adapter if present
-        ctx.update({"conn": self.conn, "prompt": prompt, "llm": self.llm})
+        # Build a context with sensible defaults, then allow the passed-in
+        # `context` to override them (so callers can inject an `llm`).
+        ctx = {"conn": self.conn, "prompt": prompt, "llm": self.llm}
+        if context:
+            ctx.update(context)
 
         # If explicit data was provided prefer it: inject into context as `full_df` and
         # register it on the DuckDB connection when possible. This explicit param
@@ -71,6 +87,11 @@ class Agent:
             use_lg = True
         elif self.use_langgraph == "auto":
             use_lg = getattr(langgraph_adapter, "HAS_LANGGRAPH", False)
+
+        # propagate the resolved LangGraph preference into the runtime context so
+        # downstream code (notably `orchestrator.execute`) can make a consistent
+        # decision about whether to attempt a LangGraph-based run.
+        ctx["prefer_langgraph"] = use_lg
 
         if use_lg:
             try:

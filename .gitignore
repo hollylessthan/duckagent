@@ -16,3 +16,6 @@ __pycache__/
 
 # egg-info
 src/duckagent.egg-info/
+
+# local env file
+.env

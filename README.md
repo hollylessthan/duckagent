@@ -43,7 +43,7 @@ agent = Agent()
 res = agent.run("Summarize revenue by country", data=df)
 ```
 
-- **Notebook (recommended):** load the IPython extension and run `%%duckagent` in a cell.
+- **Notebook:** load the IPython extension and run `%%duckagent` in a cell.
 
 Example notebook usage:
 
@@ -76,3 +76,33 @@ For developer setup, see `pyproject.toml` and `requirements.txt`.
 Further reading
 ---------------
 See `docs/architecture.md` for details on the orchestration graph, routing rules, and deployment recommendations.
+
+Environment variables
+---------------------
+
+To enable LangSmith integrations or other hosted tooling, set the `LANGSMITH_API_KEY` environment variable in your shell:
+
+Temporary (current shell):
+
+```bash
+export LANGSMITH_API_KEY="sk-..."
+```
+
+Persistent (every new shell): add the same line to your `~/.zshrc` or `~/.zprofile`.
+
+Alternatively you can create a local `.env` file (not committed) and load it via `direnv` or `python-dotenv`. See `.env.example` for the expected variable name.
+
+LangGraph runtime & LangSmith tracing
+------------------------------------
+- The adapter materializes Planner decisions into a runtime graph and prefers runtime/SDK execution in this order:
+  1. `langgraph_sdk` (if installed)
+  2. `langgraph` runtime (if installed)
+  3. Local orchestrator fallback.
+- Per-node traces (inputs/outputs/timings) are collected and redacted before any upload.
+- Optional dependencies: `langgraph`, `langgraph_sdk`, and `langsmith`. To enable LangSmith upload set `LANGSMITH_API_KEY` in your environment.
+- Run the supervisor demo (uses `MockLLM` when `OPENAI_API_KEY` is not set):
+
+```bash
+export LANGSMITH_API_KEY="sk-..."   # optional
+python3 examples/langsmith_supervisor_full_demo.py
+```
